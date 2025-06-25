@@ -13,12 +13,10 @@ from sklearn.metrics import accuracy_score, classification_report
 st.set_page_config(page_title="Suicide Logistic Regression App", layout="wide")
 
 st.title("🧠 Suicide Dataset Logistic Regression App")
-st.markdown(
-    "This app uses a fixed CSV file. Upload functionality has been removed."
-)
+st.markdown("This app uses a fixed CSV file. Upload functionality has been removed.")
 
 # === Load your CSV directly here ===
-DATA_PATH = "Suicides in India 2001-2012.csv"  # <-- change this path to your CSV file location
+DATA_PATH = "Suicides in India 2001-2012.csv"  # Change if needed
 
 try:
     df = pd.read_csv(DATA_PATH)
@@ -28,7 +26,7 @@ except Exception as e:
     st.error(f"❌ Error loading data from {DATA_PATH}: {e}")
     st.stop()
 
-# Create Target
+# Create Target column
 df["Target"] = df["Total"].apply(lambda x: 1 if x > 0 else 0)
 
 # Show class distribution
@@ -37,7 +35,11 @@ fig1, ax1 = plt.subplots()
 sns.countplot(x="Target", data=df, ax=ax1)
 st.pyplot(fig1)
 
-# Show Gender Distribution
+st.subheader("📉 Target Class Distribution Stats")
+class_counts = df["Target"].value_counts()
+st.write(class_counts)
+
+# Gender Distribution
 st.subheader("🧍 Gender vs Target")
 fig2, ax2 = plt.subplots()
 sns.countplot(x="Gender", hue="Target", data=df, ax=ax2)
@@ -59,38 +61,34 @@ fig4, ax4 = plt.subplots(figsize=(10, 5))
 sns.countplot(y="Type", data=df[df["Type"].isin(top_types)], hue="Target", ax=ax4)
 st.pyplot(fig4)
 
-# Encoding features including Year
+# Encode features
 features = ["State", "Type", "Gender", "Age_group"]
 df_encoded = pd.get_dummies(df[features], drop_first=True)
-
-# Add Year as numeric feature
 df_encoded["Year"] = df["Year"]
 
 X = df_encoded
 y = df["Target"]
 
-# Scaling
+# Scale features
 scaler = StandardScaler()
 dummy_cols = df_encoded.drop(columns=["Year"]).columns
 X_dummy_scaled = scaler.fit_transform(df_encoded[dummy_cols])
 X_scaled = np.hstack([X_dummy_scaled, df_encoded[["Year"]].values])
 
-# Split
+# Split data
 X_train, X_test, y_train, y_test = train_test_split(
     X_scaled, y, test_size=0.2, random_state=42
 )
 
-# Model Training
-model = LogisticRegression()
+# Train logistic regression model with class weight
+model = LogisticRegression(class_weight='balanced', max_iter=1000)
 model.fit(X_train, y_train)
 
-# Predictions
+# Predictions and evaluation
 y_pred = model.predict(X_test)
 
-# Results
 st.subheader("📈 Model Evaluation")
 st.write("**Accuracy:**", accuracy_score(y_test, y_pred))
-
 st.text("Classification Report:")
 st.text(classification_report(y_test, y_pred))
 
@@ -126,24 +124,34 @@ if submitted:
     }
     input_df = pd.DataFrame(input_dict)
 
+    # One-hot encode input
     input_encoded = pd.get_dummies(input_df, drop_first=True)
 
+    # Align input with training features
     for col in df_encoded.drop(columns=["Year"]).columns:
         if col not in input_encoded.columns:
             input_encoded[col] = 0
-
     input_encoded = input_encoded[df_encoded.drop(columns=["Year"]).columns]
 
+    # Add year
     input_encoded["Year"] = year_input
 
+    # Scale and predict
     input_dummy_scaled = scaler.transform(input_encoded.drop(columns=["Year"]))
-
     input_scaled = np.hstack([input_dummy_scaled, np.array([[year_input]])])
 
     prediction = model.predict(input_scaled)[0]
-    proba = model.predict_proba(input_scaled)[0][1]
+    proba = model.predict_proba(input_scaled)[0]
+
+    # Display prediction
+    st.write("🔍 **Prediction Details:**")
+    st.json({
+        "Probability (Low Risk - Class 0)": f"{proba[0]:.4f}",
+        "Probability (High Risk - Class 1)": f"{proba[1]:.4f}",
+        "Predicted Class": int(prediction)
+    })
 
     if prediction == 1:
-        st.error(f"⚠️ High suicide risk predicted with probability {proba:.2f}")
+        st.error(f"⚠️ High suicide risk predicted with probability {proba[1]:.2f}")
     else:
-        st.success(f"✅ Low suicide risk predicted with probability {1 - proba:.2f}")
+        st.success(f"✅ Low suicide risk predicted with probability {proba[0]:.2f}")
