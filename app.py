@@ -16,7 +16,7 @@ st.title("🧠 Suicide Dataset Logistic Regression App")
 st.markdown("This app uses a fixed CSV file. Upload functionality has been removed.")
 
 # === Load your CSV directly here ===
-DATA_PATH = "Suicides in India 2001-2012.csv"  # Change if needed
+DATA_PATH = "Suicides in India 2001-2012.csv"  # Make sure this file is in the same directory
 
 try:
     df = pd.read_csv(DATA_PATH)
@@ -36,8 +36,7 @@ sns.countplot(x="Target", data=df, ax=ax1)
 st.pyplot(fig1)
 
 st.subheader("📉 Target Class Distribution Stats")
-class_counts = df["Target"].value_counts()
-st.write(class_counts)
+st.write(df["Target"].value_counts())
 
 # Gender Distribution
 st.subheader("🧍 Gender vs Target")
@@ -61,7 +60,7 @@ fig4, ax4 = plt.subplots(figsize=(10, 5))
 sns.countplot(y="Type", data=df[df["Type"].isin(top_types)], hue="Target", ax=ax4)
 st.pyplot(fig4)
 
-# Encode features
+# Feature Encoding
 features = ["State", "Type", "Gender", "Age_group"]
 df_encoded = pd.get_dummies(df[features], drop_first=True)
 df_encoded["Year"] = df["Year"]
@@ -69,22 +68,22 @@ df_encoded["Year"] = df["Year"]
 X = df_encoded
 y = df["Target"]
 
-# Scale features
+# Feature Scaling
 scaler = StandardScaler()
 dummy_cols = df_encoded.drop(columns=["Year"]).columns
 X_dummy_scaled = scaler.fit_transform(df_encoded[dummy_cols])
 X_scaled = np.hstack([X_dummy_scaled, df_encoded[["Year"]].values])
 
-# Split data
+# Train-test split
 X_train, X_test, y_train, y_test = train_test_split(
     X_scaled, y, test_size=0.2, random_state=42
 )
 
-# Train logistic regression model with class weight
+# Train model
 model = LogisticRegression(class_weight='balanced', max_iter=1000)
 model.fit(X_train, y_train)
 
-# Predictions and evaluation
+# Evaluate model
 y_pred = model.predict(X_test)
 
 st.subheader("📈 Model Evaluation")
@@ -116,42 +115,43 @@ with st.form("prediction_form"):
     submitted = st.form_submit_button("Predict Suicide Risk")
 
 if submitted:
-    input_dict = {
+    # Create input dataframe
+    input_data = pd.DataFrame({
         "State": [state_input],
         "Type": [type_input],
         "Gender": [gender_input],
-        "Age_group": [age_group_input],
-    }
-    input_df = pd.DataFrame(input_dict)
+        "Age_group": [age_group_input]
+    })
 
     # One-hot encode input
-    input_encoded = pd.get_dummies(input_df, drop_first=True)
+    input_encoded = pd.get_dummies(input_data)
 
-    # Align input with training features
+    # Align with training data columns
     for col in df_encoded.drop(columns=["Year"]).columns:
         if col not in input_encoded.columns:
             input_encoded[col] = 0
     input_encoded = input_encoded[df_encoded.drop(columns=["Year"]).columns]
 
-    # Add year
+    # Add Year column
     input_encoded["Year"] = year_input
 
-    # Scale and predict
-    input_dummy_scaled = scaler.transform(input_encoded.drop(columns=["Year"]))
-    input_scaled = np.hstack([input_dummy_scaled, np.array([[year_input]])])
+    # Scale and reshape
+    scaled_input_dummy = scaler.transform(input_encoded.drop(columns=["Year"]))
+    scaled_input = np.hstack([scaled_input_dummy, np.array([[year_input]])])
 
-    prediction = model.predict(input_scaled)[0]
-    proba = model.predict_proba(input_scaled)[0]
+    # Predict
+    prediction = model.predict(scaled_input)[0]
+    probability = model.predict_proba(scaled_input)[0]
 
-    # Display prediction
-    st.write("🔍 **Prediction Details:**")
-    st.json({
-        "Probability (Low Risk - Class 0)": f"{proba[0]:.4f}",
-        "Probability (High Risk - Class 1)": f"{proba[1]:.4f}",
-        "Predicted Class": int(prediction)
-    })
+    # Display results
+    st.subheader("📌 Prediction Result")
+    st.write("**Predicted Class:**", "High Risk (1)" if prediction == 1 else "Low Risk (0)")
+    st.write(f"**Probability (Low Risk):** {probability[0]:.4f}")
+    st.write(f"**Probability (High Risk):** {probability[1]:.4f}")
 
-    if prediction == 1:
-        st.error(f"⚠️ High suicide risk predicted with probability {proba[1]:.2f}")
+    if probability[1] > 0.7:
+        st.error(f"⚠️ High suicide risk predicted with high confidence ({probability[1]:.2f})")
+    elif probability[1] > 0.5:
+        st.warning(f"⚠️ Moderate suicide risk predicted ({probability[1]:.2f})")
     else:
-        st.success(f"✅ Low suicide risk predicted with probability {proba[0]:.2f}")
+        st.success(f"✅ Low suicide risk predicted ({probability[0]:.2f})")
